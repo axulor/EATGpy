@@ -15,11 +15,10 @@ class Simulation:
     def __init__(self, population, average_degree, network_type):
         """
         network_type has several options, give following network type as string;
-            1. lattice
-            2. ring
-            3. ER-random
-            4. Watts Strogatz(Small World)
-            5. BA-SF
+            1. ring
+            2. ER-random
+            3. Watts Strogatz(Small World)
+            4. BA-SF
         """
 
         self.network_type = network_type
@@ -28,10 +27,9 @@ class Simulation:
         self.initial_cooperators = self.__choose_initial_cooperators()
 
     def __generate_agents(self, population, average_degree):
-        if self.network_type == "lattice":
-            self.network = self.__generate_lattice(population)
+        """Generating structured groups"""
 
-        elif self.network_type == "ring":
+        if self.network_type == "ring":
             self.network = nx.circulant_graph(population, [1])
 
         elif self.network_type == "ER":
@@ -47,80 +45,12 @@ class Simulation:
 
         agents = [Agent() for id in range(population)]
 
-        if self.network_type == "lattice":
-            n = int(np.sqrt(population))
-            for index, focal in enumerate(agents):
-                neighbors_id = list(
-                    self.network[int(index//n), int(index % n)])
-                for (x, y) in neighbors_id:
-                    nb_id = int(x*n+y)
-                    focal.neighbors_id.append(nb_id)
-
-        # When using another topology
-        else:
-            for index, focal in enumerate(agents):
-                neighbors_id = list(self.network[index])
-                for nb_id in neighbors_id:
-                    focal.neighbors_id.append(nb_id)
+        for index, focal in enumerate(agents):
+            neighbors_id = list(self.network[index])
+            for nb_id in neighbors_id:
+                focal.neighbors_id.append(nb_id)
 
         return agents
-
-    def __generate_lattice(self, population):
-        """
-        Default Lattice has only 4 edges(vertical&horizontal), so adding 4 edges in diagonal direction and 
-        Set periodic boundary condition
-        """
-
-        n = int(np.sqrt(population))    # n×n lattice is generated
-        G = nx.grid_graph(dim=[n, n])
-
-        # Add diagonal edge except for outer edge agent
-        for i in range(1, n-1):
-            for j in range(1, n-1):
-                G.add_edge((i, j), (i+1, j+1))
-                G.add_edge((i, j), (i+1, j-1))
-                G.add_edge((i, j), (i-1, j+1))
-                G.add_edge((i, j), (i-1, j-1))
-
-        # Add edge along i = 0, j=1~n-2
-        for j in range(1, n-1):
-            G.add_edge((0, j), (n-1, j))
-            G.add_edge((0, j), (n-1, j+1))
-            G.add_edge((0, j), (n-1, j-1))
-            G.add_edge((0, j), (1, j-1))
-            G.add_edge((0, j), (1, j+1))
-
-        # Add edge along j=0, i=1~n-2
-        for i in range(1, n-1):
-            G.add_edge((i, 0), (i, n-1))
-            G.add_edge((i, 0), (i-1, n-1))
-            G.add_edge((i, 0), (i+1, n-1))
-            G.add_edge((i, 0), (i+1, 1))
-
-        # Add edge along j=0
-        G.add_edge((0, 0), (n-1, 0))
-        G.add_edge((0, 0), (n-1, 0+1))
-        G.add_edge((0, 0), (n-1, n-1))
-        G.add_edge((0, 0), (0, n-1))
-        G.add_edge((0, 0), (1, n-1))
-
-        # Add edge along j=n-1
-        G.add_edge((0, n-1), (n-1, n-1))
-        G.add_edge((0, n-1), (n-1, 0))
-        G.add_edge((0, n-1), (n-1, n-2))
-        G.add_edge((0, n-1), (0, 0))
-
-        # Add edge along i=n-1
-        G.add_edge((n-1, 0), (0, 0))
-        G.add_edge((n-1, 0), (0, 1))
-        G.add_edge((n-1, 0), (0, n-1))
-        G.add_edge((n-1, 0), (n-1, n-1))
-        G.add_edge((n-1, 0), (n-2, n-1))
-
-        # Upper right edge agent
-        G.add_edge((n-1, n-2), (n-2, n-1))
-
-        return G
 
     def __choose_initial_cooperators(self):
         population = len(self.agents)
@@ -136,28 +66,28 @@ class Simulation:
             else:
                 focal.strategy = "D"
 
-    def __count_payoff(self, TP):
+    def __count_payoff(self, Dg, Dr):
         """Count the payoff based on payoff matrix"""
 
         R = 1       # Reward
-        S = 0       # Sucker
-        T = TP      # TemptationParameter
+        S = -Dr     # Sucker
+        T = 1+Dg    # Temptation
         P = 0       # Punishment
 
         for focal in self.agents:
-            focal.payoff = 0.0
+            focal.point = 0.0
             for nb_id in focal.neighbors_id:
                 neighbor = self.agents[nb_id]
                 if focal.strategy == "C" and neighbor.strategy == "C":
-                    focal.payoff += R
+                    focal.point += R
                 elif focal.strategy == "C" and neighbor.strategy == "D":
-                    focal.payoff += S
+                    focal.point += S
                 elif focal.strategy == "D" and neighbor.strategy == "C":
-                    focal.payoff += T
+                    focal.point += T
                 elif focal.strategy == "D" and neighbor.strategy == "D":
-                    focal.payoff += P
+                    focal.point += P
 
-    def __update_strategy(self, rule="PF"):
+    def __update_strategy(self, rule="IM"):
         for focal in self.agents:
             focal.decide_next_strategy(self.agents, rule=rule)
 
@@ -172,9 +102,8 @@ class Simulation:
 
         return fc
 
-    def __play_game(self, episode, TP):
+    def __play_game(self, episode, Dg, Dr):
         """Continue games until fc gets converged"""
-
         tmax = 3000
 
         self.__initialize_strategy()
@@ -215,67 +144,17 @@ class Simulation:
 
         return fc_converged
 
-    def __take_snapshot(self, timestep):
-        if self.network_type == "lattice":
-            n = int(np.sqrt(len(self.agents)))
-            for index, focal in enumerate(self.agents):
-                if focal.strategy == "C":
-                    self.network.nodes[int(index//n),
-                                       int(index % n)]["strategy"] = "C"
-                else:
-                    self.network.nodes[int(index//n),
-                                       int(index % n)]["strategy"] = "D"
-
-            def color_for_lattice(i, j):
-                if self.network.nodes[i, j]["strategy"] == "C":
-                    return 'cyan'
-                else:
-                    return 'pink'
-
-            color = dict(((i, j), color_for_lattice(i, j))
-                         for i, j in self.network.nodes())
-            pos = dict((n, n) for n in self.network.nodes())
-
-        else:
-            for index, focal in enumerate(self.agents):
-                if focal.strategy == "C":
-                    self.network.nodes[index]["strategy"] = "C"
-                else:
-                    self.network.nodes[index]["strategy"] = "D"
-
-            def color(i):
-                if self.network.nodes[i]["strategy"] == "C":
-                    return 'cyan'
-                else:
-                    return 'pink'
-
-            color = dict((i, color(i)) for i in self.network.nodes())
-            if self.network_type == "ring":
-                pos = nx.circular_layout(self.network)
-
-            else:
-                pos = nx.spring_layout(self.network)
-
-        nx.draw_networkx_edges(self.network, pos)
-        nx.draw_networkx_nodes(self.network, pos, node_color=list(
-            color.values()), node_size=10)
-        plt.title('t={}'.format(timestep), fontsize=20)
-        plt.xticks([])
-        plt.yticks([])
-        plt.savefig(f"snapshot_t={timestep}.png")
-        plt.close()
-
     def one_episode(self, episode):
         """Run one episode"""
 
         result = pd.DataFrame({'Dg': [], 'Dr': [], 'Fc': []})
         self.__choose_initial_cooperators()
 
-        for Dr in np.arange(0, 1.1, 0.1):
-            for Dg in np.arange(0, 1.1, 0.1):
+        for Dr in np.arange(1, 1.1, 0.1):
+            for Dg in np.arange(1, 1.1, 0.1):
                 fc_converged = self.__play_game(episode, Dg, Dr)
                 new_result = pd.DataFrame([[format(Dg, '.1f'), format(
                     Dr, '.1f'), fc_converged]], columns=['Dg', 'Dr', 'Fc'])
                 result = result.append(new_result)
 
-        result.to_csv(f"phase_diagram{episode}.csv")
+        # result.to_csv(f"phase_diagram{episode}.csv")
