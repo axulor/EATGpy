@@ -11,9 +11,13 @@ def main():
     average_degree = 8          # Average degree of social network
     # Number of total episode in a single simulation for taking ensemble average
     num_episode = 2
-    network_type = "ER"    # topology of social network
+    network_type = "WS"    # topology of social network
+    rule = "PF"
+    tmax = 3000
 
-    simulation = Simulation(population, average_degree, network_type)
+    # Instantiate a simulation class
+    simulation = Simulation(population, average_degree,
+                            network_type, rule, tmax)
 
     for episode in range(num_episode):
         random.seed()

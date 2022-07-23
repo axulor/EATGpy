@@ -96,102 +96,38 @@ class Simulation:
         P = 0       # Punishment
 
         for focal in self.agents:
-            focal.payoff = 0.0
+            focal.point = 0.0
             for nb_id in focal.neighbors_id:
                 neighbor = self.agents[nb_id]
                 if focal.strategy == "C" and neighbor.strategy == "C":
-                    focal.payoff += R
+                    focal.point += R
                 elif focal.strategy == "C" and neighbor.strategy == "D":
-                    focal.payoff += S
+                    focal.point += S
                 elif focal.strategy == "D" and neighbor.strategy == "C":
-                    focal.payoff += T
+                    focal.point += T
                 elif focal.strategy == "D" and neighbor.strategy == "D":
-                    focal.payoff += P
+                    focal.point += P
 
-    def __count_Cn_AvgDegree(self, index):
+    def count_Cn_AvgDegree(self):
         """Calculate the average degree of the cooperator's neighbors"""
-
         c_neighbors_num = 0
         c_neighbors_degree = 0
+        for index, focal in enumerate(self.agents):
+            neighbors_id = list(self.network[index])
 
-        neighbors_id = list(self.network[index])
-
-        for nb_id in neighbors_id:
-            if self.agents[nb_id].strategy == "C":
-                c_neighbors_num += 1
-                c_neighbors_degree += nx.degree(self.network, nb_id)
-
-        Cn_AvgDegree = c_neighbors_degree / c_neighbors_num
+            for nb_id in neighbors_id:
+                if self.agents[nb_id].strategy == "C":
+                    c_neighbors_num += 1
+                    c_neighbors_degree += nx.degree(self.network, nb_id)
+            Cn_AvgDegree = c_neighbors_degree / c_neighbors_num
 
         return Cn_AvgDegree
 
-    def __count_next_TemPara(self, TemPara, Alpha):
-        """Calculate the variation of temptation parameters"""
 
-        for index, focal in enumerate(self.agents):
-            if focal.strategy == "C":
-                TemPara[index] = TemPara[index] * \
-                    [(self.__count_Cn_AvgDegree(index)) ^ Alpha]
-            elif focal.strategy == "D":
-                TemPara[index] = TemPara[index] / \
-                    [(self.__count_Cn_AvgDegree(index)) ^ Alpha]
+simulation = Simulation(8, 4,
+                        "WS", "PF", 30)
 
-    def __play_game(self, episode, Dg, Dr):
-        """Continue games until fc gets converged"""
+#print(simulation.agents, "\n")
 
-        self.__initialize_strategy()
-        initial_fc = self.__count_fc()
-        fc_hist = [initial_fc]
-        print(
-            f"Episode:{episode}, Dr:{Dr:.1f}, Dg:{Dg:.1f}, Time: 0, Fc:{initial_fc:.3f}")
-        # result = pd.DataFrame({'Time': [0], 'Fc': [initial_fc]})
-
-        for t in range(1, self.tmax+1):
-            self.__count_payoff(Dg, Dr)
-            self.__update_strategy()
-            fc = self.__count_fc()
-            fc_hist.append(fc)
-            print(
-                f"Episode:{episode}, Dr:{Dr:.1f}, Dg:{Dg:.1f}, Time:{t}, Fc:{fc:.3f}")
-            # new_result = pd.DataFrame([[t, fc]], columns = ['Time', 'Fc'])
-            # result = result.append(new_result)
-
-            # Convergence conditions
-            if fc == 0 or fc == 1:
-                fc_converged = fc
-                comment = "Fc(0 or 1"
-                break
-
-            if t >= 100 and np.absolute(np.mean(fc_hist[t-100:t-1]) - fc)/fc < 0.001:
-                fc_converged = np.mean(fc_hist[t-99:t])
-                comment = "Fc(converged)"
-                break
-
-            if t == self.tmax:
-                fc_converged = np.mean(fc_hist[t-99:t])
-                comment = "Fc(final timestep)"
-                break
-
-        print(f"Dr:{Dr:.1f}, Dg:{Dg:.1f}, Time:{t}, {comment}:{fc_converged:.3f}")
-        # result.to_csv(f"time_evolution_Dg_{Dg:.1f}_Dr_{Dr:.1f}.csv")
-
-        return fc_converged
-
-    def one_episode(self, episode):
-        """Run one episode"""
-
-        result = pd.DataFrame({'Dg': [], 'Dr': [], 'Fc': []})
-        self.__choose_initial_cooperators()
-
-        for Dr in np.arange(1, 1.1, 0.1):
-            for Dg in np.arange(1, 1.1, 0.1):
-                fc_converged = self.__play_game(episode, Dg, Dr)
-                new_result = pd.DataFrame([[format(Dg, '.1f'), format(
-                    Dr, '.1f'), fc_converged]], columns=['Dg', 'Dr', 'Fc'])
-                result = result.append(new_result)
-
-        # result.to_csv(f"phase_diagram{episode}.csv")
-
-# simulation_test = Simulation(50, 4,
-#                              "WS", "PF", 100)
-# print(simulation_test.tmax)
+for index in len(simulation.agents):
+    print(simulation.count_degree(index), "\n")

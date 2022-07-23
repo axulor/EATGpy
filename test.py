@@ -7,6 +7,8 @@ import random as rnd
 import networkx as nx
 import matplotlib.pyplot as plt
 import pandas as pd
+from pytest import TempPathFactory
+from sympy import degree
 from agent import Agent
 
 
@@ -52,14 +54,28 @@ labels[6] = r"$6$"
 labels[7] = r"$7$"
 
 agents = [Agent() for id in range(8)]
+
+TemPara = []
 for index, focal in enumerate(agents):
-    neighbors_id = list(G[index])
-    print(neighbors_id, "\n")
+    print(index, focal, "\n")
+    TemPara.append(focal)
 
-    for nb_id in neighbors_id:
-        focal.neighbors_id.append(nb_id)
 
-nx.draw_networkx_labels(G, pos, labels, font_size=22, font_color="whitesmoke")
+print(TemPara)
+# for index, focal in enumerate(agents):
+#     neighbors_id = list(G[index])
+#     degree = len(neighbors_id)
+#     # print(neighbors_id, "\n", degree)
+
+#     for nb_id in neighbors_id:
+#         print(agents[nb_id])
+#         focal.neighbors_id.append(nb_id)
+print(G[1])
+# print(agents, "\n")
+# print(agents[0])
+# print(nx.degree(G, 0))
+nx.draw_networkx_labels(G, pos, labels, font_size=22,
+                        font_color="whitesmoke")
 
 plt.tight_layout()
 plt.axis("off")
