@@ -7,17 +7,22 @@ import random
 
 
 def main():
-    population = 10000            # Agent number
-    average_degree = 8          # Average degree of social network
+    population = 1000  # Agent number
+    average_degree = 4  # Average degree of social network
     # Number of total episode in a single simulation for taking ensemble average
-    num_episode = 2
-    network_type = "WS"    # topology of social network
-    rule = "PF"
-    tmax = 3000
+    num_episode = 1
+    network_type = "WS"  # topology of social network
+    rule = "FR"
+    max_times = 1000
 
     # Instantiate a simulation class
-    simulation = Simulation(population, average_degree,
-                            network_type, rule, tmax)
+    simulation = Simulation(
+        population=population,
+        average_degree=average_degree,
+        network_type=network_type,
+        rule=rule,
+        max_times=max_times
+    )
 
     for episode in range(num_episode):
         random.seed()

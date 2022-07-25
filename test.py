@@ -62,15 +62,16 @@ for index, focal in enumerate(agents):
 
 
 print(TemPara)
-# for index, focal in enumerate(agents):
-#     neighbors_id = list(G[index])
-#     degree = len(neighbors_id)
+for index, focal in enumerate(agents):
+    neighbors_id = list(G[index])
+    print(index, neighbors_id)
+    degree = len(neighbors_id)
 #     # print(neighbors_id, "\n", degree)
 
 #     for nb_id in neighbors_id:
 #         print(agents[nb_id])
 #         focal.neighbors_id.append(nb_id)
-print(G[1])
+# print(G[1])
 # print(agents, "\n")
 # print(agents[0])
 # print(nx.degree(G, 0))

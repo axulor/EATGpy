@@ -8,13 +8,15 @@ import random as rnd
 import networkx as nx
 import matplotlib.pyplot as plt
 import pandas as pd
+from sympy import matrix_multiply_elementwise
 from torch import alpha_dropout
 from agent import Agent
+import csv
 
 
 class Simulation:
 
-    def __init__(self, population, average_degree, network_type, rule, tmax):
+    def __init__(self, population, average_degree, network_type, rule, max_times):
         """
         network_type has several options, give following network type as string;
             1. ring
@@ -22,15 +24,18 @@ class Simulation:
             3. Watts Strogatz(Small World)
             4. BA-SF
         """
+        self.population = population
+        self.average_degree = average_degree
         self.network_type = network_type
         self.rule = rule
-        self.tmax = tmax
+        self.max_times = max_times
 
         self.network = None
-        self.agents = self.__generate_agents(population, average_degree)
-        self.initial_cooperators = self.__choose_initial_cooperators()
+        self.agents = self.__init_agents(population, average_degree)
+        self.initial_cooperators = None
+        self.__init_cooperators()
 
-    def __generate_agents(self, population, average_degree):
+    def __init_agents(self, population, average_degree):
         """Generating structured groups"""
 
         if self.network_type == "ring":
@@ -44,154 +49,163 @@ class Simulation:
                 population, average_degree, 0.5)
 
         elif self.network_type == "BA-SF":
-            rearange_edges = int(average_degree*0.5)
+            rearange_edges = int(average_degree * 0.5)
             self.network = nx.barabasi_albert_graph(population, rearange_edges)
 
-        agents = [Agent() for id in range(population)]
+        agents = [Agent() for _ in range(population)]
 
-        for index, focal in enumerate(agents):
-            neighbors_id = list(self.network[index])
-            for nb_id in neighbors_id:
-                focal.neighbors_id.append(nb_id)
+        # 初始化agent邻居
+        for index, agent in enumerate(agents):
+            agent.neighbor_ids += list(self.network[index])
 
         return agents
 
-    def __choose_initial_cooperators(self):
+    def __init_cooperators(self):
         population = len(self.agents)
         self.initial_cooperators = rnd.sample(
-            range(population), k=int(population/2))
+            range(population), k=int(population / 2))
 
-    def __initialize_strategy(self):
+    def __init_strategy(self):
         """Initialize the strategy of agents"""
 
-        for index, focal in enumerate(self.agents):
+        for index, agent in enumerate(self.agents):
             if index in self.initial_cooperators:
-                focal.strategy = "C"
+                agent.strategy = "C"
             else:
-                focal.strategy = "D"
+                agent.strategy = "D"
 
-    def __update_strategy(self):
+    def __update_strategy(self, temptation):
 
-        print(self.rule)
-        for focal in self.agents:
-            focal.decide_next_strategy(self.agents, self.rule)
+        for _id, agent in enumerate(self.agents):
+            agent.decide_next_strategy(self.agents, self.rule, temptation[_id])
 
-        for focal in self.agents:
-            focal.update_strategy()
+        for agent in self.agents:
+            agent.update_strategy()
 
     def __count_fc(self):
         """Calculate the fraction of cooperative agents"""
 
-        fc = len(
-            [agent for agent in self.agents if agent.strategy == "C"])/len(self.agents)
-
+        num_coop = sum([1 for _ in self.agents if _.strategy == "C"])
+        fc = num_coop / len(self.agents)
         return fc
 
-    def __count_payoff(self, TemPara):
+    def __count_payoff(self, temptation):
         """Count the payoff based on payoff matrix"""
 
-        R = 1       # Reward
-        S = 0       # Sucker
-        T = TemPara  # Temptation
-        P = 0       # Punishment
+        R = 1  # Reward
+        S = 0  # Sucker
+        T = temptation  # Temptation
+        P = 0  # Punishment
 
-        for focal in self.agents:
-            focal.payoff = 0.0
-            for nb_id in focal.neighbors_id:
-                neighbor = self.agents[nb_id]
-                if focal.strategy == "C" and neighbor.strategy == "C":
-                    focal.payoff += R
-                elif focal.strategy == "C" and neighbor.strategy == "D":
-                    focal.payoff += S
-                elif focal.strategy == "D" and neighbor.strategy == "C":
-                    focal.payoff += T
-                elif focal.strategy == "D" and neighbor.strategy == "D":
-                    focal.payoff += P
+        for index, agent in enumerate(self.agents):
+            agent.payoff = 0.0
+            for _id in agent.neighbor_ids:
+                neighbor = self.agents[_id]
+                if agent.strategy == "C" and neighbor.strategy == "C":
+                    agent.payoff += R
+                elif agent.strategy == "C" and neighbor.strategy == "D":
+                    agent.payoff += S
+                elif agent.strategy == "D" and neighbor.strategy == "C":
+                    agent.payoff += T[index]
+                elif agent.strategy == "D" and neighbor.strategy == "D":
+                    agent.payoff += P
 
-    def __count_Cn_AvgDegree(self, index):
-        """Calculate the average degree of the cooperator's neighbors"""
+    def __update_temptations(self, temptation_params, Alpha):
+        """ update temptation parameters for each agent """
 
-        c_neighbors_num = 0
-        c_neighbors_degree = 0
+        for index, agent in enumerate(self.agents):
 
-        neighbors_id = list(self.network[index])
+            # 统计合作邻居的数量和度
+            sum_coop = 0
+            sum_degree = 0
+            neighbor_ids = list(self.network[index])
+            for _id in neighbor_ids:
+                if self.agents[_id].strategy == "C":
+                    # 合作的邻居
+                    sum_coop += 1
+                    sum_degree += nx.degree(self.network, _id)
 
-        for nb_id in neighbors_id:
-            if self.agents[nb_id].strategy == "C":
-                c_neighbors_num += 1
-                c_neighbors_degree += nx.degree(self.network, nb_id)
+            if sum_coop == 0:
+                continue
 
-        Cn_AvgDegree = c_neighbors_degree / c_neighbors_num
+            # 更新参数
+            factor = (sum_degree / sum_coop) ** Alpha  # 论文更新公式的因子
 
-        return Cn_AvgDegree
+            if agent.strategy == "C":  # 合作
+                temptation_params[index] *= factor
+            else:  # 背叛
+                temptation_params[index] /= factor
 
-    def __count_next_TemPara(self, TemPara, Alpha):
-        """Calculate the variation of temptation parameters"""
+        return temptation_params
 
-        for index, focal in enumerate(self.agents):
-            if focal.strategy == "C":
-                TemPara[index] = TemPara[index] * \
-                    [(self.__count_Cn_AvgDegree(index)) ^ Alpha]
-            elif focal.strategy == "D":
-                TemPara[index] = TemPara[index] / \
-                    [(self.__count_Cn_AvgDegree(index)) ^ Alpha]
-
-    def __play_game(self, episode, Dg, Dr):
+    def __play_game(self, episode, Alpha):
         """Continue games until fc gets converged"""
 
-        self.__initialize_strategy()
+        # Initial temptation parameter
+        temptation_params = [1 for _ in range(self.population)]
+        self.__init_strategy()
         initial_fc = self.__count_fc()
         fc_hist = [initial_fc]
-        print(
-            f"Episode:{episode}, Dr:{Dr:.1f}, Dg:{Dg:.1f}, Time: 0, Fc:{initial_fc:.3f}")
-        # result = pd.DataFrame({'Time': [0], 'Fc': [initial_fc]})
 
-        for t in range(1, self.tmax+1):
-            self.__count_payoff(Dg, Dr)
-            self.__update_strategy()
+        # Data at the initial time
+        print(
+            f"Episode:{episode},Alpha:{Alpha:.2f},Time: 0,Fc:{initial_fc:.3f}")
+        record_file = open('score.csv', 'w', encoding='UTF8', newline='')
+        writer = csv.writer(record_file)
+        writer.writerow(temptation_params)
+        writer.writerow(
+            [self.agents[i].payoff for i in range(self.population)])
+        writer.writerow(
+            [self.agents[i].strategy for i in range(self.population)])
+
+        # print(temptation_params)
+        for t in range(1, self.max_times + 1):
+
+            # account
+            self.__count_payoff(temptation_params)
+
+            # update
+            temptation_params = self.__update_temptations(
+                temptation_params, Alpha)
+            self.__update_strategy(temptation_params)
+
+            # other
             fc = self.__count_fc()
             fc_hist.append(fc)
-            print(
-                f"Episode:{episode}, Dr:{Dr:.1f}, Dg:{Dg:.1f}, Time:{t}, Fc:{fc:.3f}")
-            # new_result = pd.DataFrame([[t, fc]], columns = ['Time', 'Fc'])
-            # result = result.append(new_result)
+
+            # Data at the end of each time
+            print(f"Episode:{episode},Alpha:{Alpha:.2f},Time:{t}, Fc:{fc:.3f}")
+            record_file.write('\n')
+            writer.writerow(temptation_params)
+            writer.writerow(
+                [self.agents[i].payoff for i in range(self.population)])
+            writer.writerow(
+                [self.agents[i].strategy for i in range(self.population)])
 
             # Convergence conditions
-            if fc == 0 or fc == 1:
-                fc_converged = fc
-                comment = "Fc(0 or 1"
+            # if fc == 0 or fc == 1:
+            #     fc_converged = fc
+            #     comment = "Fc 0 or 1"
+            #     break
+
+            # if t >= 100 and np.absolute(np.mean(fc_hist[t-100:t-1]) - fc)/fc < 0.001:
+            #     fc_converged = np.mean(fc_hist[t-99:t])
+            #     comment = "Fc(converged)"
+            #     break
+
+            if t == self.max_times:
+                fc_converged = np.mean(fc_hist[t - 99:t])
+                # comment = "Fc(final timestep)"
                 break
 
-            if t >= 100 and np.absolute(np.mean(fc_hist[t-100:t-1]) - fc)/fc < 0.001:
-                fc_converged = np.mean(fc_hist[t-99:t])
-                comment = "Fc(converged)"
-                break
-
-            if t == self.tmax:
-                fc_converged = np.mean(fc_hist[t-99:t])
-                comment = "Fc(final timestep)"
-                break
-
-        print(f"Dr:{Dr:.1f}, Dg:{Dg:.1f}, Time:{t}, {comment}:{fc_converged:.3f}")
-        # result.to_csv(f"time_evolution_Dg_{Dg:.1f}_Dr_{Dr:.1f}.csv")
+        record_file.flush()
+        record_file.close()
+        # Final convergence result
+        # print(f" Alpha:{Alpha:.2f}, Time:{t}, {comment}:{fc_converged:.3f}")
 
         return fc_converged
 
     def one_episode(self, episode):
         """Run one episode"""
-
-        result = pd.DataFrame({'Dg': [], 'Dr': [], 'Fc': []})
-        self.__choose_initial_cooperators()
-
-        for Dr in np.arange(1, 1.1, 0.1):
-            for Dg in np.arange(1, 1.1, 0.1):
-                fc_converged = self.__play_game(episode, Dg, Dr)
-                new_result = pd.DataFrame([[format(Dg, '.1f'), format(
-                    Dr, '.1f'), fc_converged]], columns=['Dg', 'Dr', 'Fc'])
-                result = result.append(new_result)
-
-        # result.to_csv(f"phase_diagram{episode}.csv")
-
-# simulation_test = Simulation(50, 4,
-#                              "WS", "PF", 100)
-# print(simulation_test.tmax)
+        for Alpha in np.arange(0.1, 0.15, 0.05):
+            fc_converged = self.__play_game(episode, Alpha)
